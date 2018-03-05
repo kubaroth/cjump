@@ -69,6 +69,10 @@ target_link_libraries(${PROJECT_NAME}
   LLVMSupport
 )
 
+if ("${CMAKE_BUILD_TYPE}" STREQUAL "Debug")
+  ADD_DEFINITIONS(-DDEBUG)
+endif()
+
 message(STATUS "User selected librarys = ${LIBRARY_LIST}")
 # message(STATUS "User selected components = ${COMPONENT_LIST}")
 message(STATUS " = ${llvm_libs}")

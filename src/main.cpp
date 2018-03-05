@@ -8,6 +8,8 @@
 #include <string>
 #include <algorithm>
 #include <sstream>
+#include <map>
+#include <memory>
 
 using std::cout;
 using std::endl;
@@ -25,6 +27,21 @@ cl::opt<bool> Currenttype("type",cl::desc("Show the type of variable at curent l
 cl::opt<bool> Complete ("complete",cl::desc("Complete at point"),cl::ValueOptional);
 
 
+struct Token{
+    std::string name = "";
+    std::string type = "";
+    std::string path = "";
+    int line=0;
+    int col=0;
+    int level = 0;
+//    Token(){}
+    friend std::ostream &operator<<(std::ostream &os, Token const &t){
+        return os<<"name: " << t.name << " type: "<< t.type << " path: "<< t.path<<":"<<t.line<<":"<<t.col;
+    }
+};
+
+using TokenMap = std::map<std::string, Token>;
+using TokenPair = std::pair<std::string, Token>;
 
 struct Local{
     
@@ -59,13 +76,11 @@ std::string find_token(const CXTranslationUnit &tu, const CXToken *tokens, unsig
         CXString spell = clang_getTokenSpelling(tu, token);
         CXSourceLocation loc = clang_getTokenLocation(tu, token);
         
-        
         CXFile file;
         unsigned line, column, offset;
         clang_getFileLocation(loc, &file, &line, &column, &offset);
         
-        
-        // cout << line << " " << myline << " " << column << " " << mycol << "___" << (line == myline) << " " << (0==0) <<  endl;
+        // cout << "..."<<line << " " << myline << " " << column << " " << mycol << "___" << (line == myline) << " " << (0==0) <<  endl;
         if (line < myline) {continue;}
         if ((line == myline) && (column <= mycol) ){            
             CXString fileName = clang_getFileName(file);
@@ -95,31 +110,31 @@ const char *_getTokenKindSpelling(CXTokenKind kind) {
     }
 }
 
-void show_all_tokens(const CXTranslationUnit &tu, const CXToken *tokens, unsigned numTokens) {
-    printf("=== show tokens ===\n");
-    printf("NumTokens: %d\n", numTokens);
-    for (auto i = 0U; i < numTokens; i++) {
-        const CXToken &token = tokens[i];
-        CXTokenKind kind = clang_getTokenKind(token);
-        CXString spell = clang_getTokenSpelling(tu, token);
-        CXSourceLocation loc = clang_getTokenLocation(tu, token);
+//void show_all_tokens(const CXTranslationUnit &tu, const CXToken *tokens, unsigned numTokens) {
+//    printf("=== show tokens ===\n");
+//    printf("NumTokens: %d\n", numTokens);
+//    for (auto i = 0U; i < numTokens; i++) {
+//        const CXToken &token = tokens[i];
+//        CXTokenKind kind = clang_getTokenKind(token);
+//        CXString spell = clang_getTokenSpelling(tu, token);
+//        CXSourceLocation loc = clang_getTokenLocation(tu, token);
         
-        CXFile file;
-        unsigned line, column, offset;
-        clang_getFileLocation(loc, &file, &line, &column, &offset);
-        CXString fileName = clang_getFileName(file);
+//        CXFile file;
+//        unsigned line, column, offset;
+//        clang_getFileLocation(loc, &file, &line, &column, &offset);
+//        CXString fileName = clang_getFileName(file);
         
-        printf("Token: %d\n", i);
-        printf(" Text: %s\n", clang_getCString(spell));
-        printf(" Kind: %s\n", _getTokenKindSpelling(kind));
-        printf(" Location: %s:%d:%d:%d\n",
-               clang_getCString(fileName), line, column, offset);
-        printf("\n");
+//        printf("Token: %d\n", i);
+//        printf(" Text: %s\n", clang_getCString(spell));
+//        printf(" Kind: %s\n", _getTokenKindSpelling(kind));
+//        printf(" Location: %s:%d:%d:%d\n",
+//               clang_getCString(fileName), line, column, offset);
+//        printf("\n");
         
-        clang_disposeString(fileName);
-        clang_disposeString(spell);
-    }
-}
+//        clang_disposeString(fileName);
+//        clang_disposeString(spell);
+//    }
+//}
 
 unsigned get_filesize(const char *fileName) {
     FILE *fp = fopen(fileName, "r");
@@ -158,31 +173,33 @@ void show_clang_version(void) {
     clang_disposeString(version);
 }
 
-std::string getCursorKindName( CXCursorKind cursorKind )
-{
-    CXString kindName = clang_getCursorKindSpelling( cursorKind );
-    std::string result = clang_getCString( kindName );
-    clang_disposeString( kindName );
-    return result;
-}
-std::string getCursorSpelling( CXCursor cursor )
-{
-    CXString cursorSpelling = clang_getCursorSpelling( cursor );
-    std::string result
-            = clang_getCString( cursorSpelling );
-    clang_disposeString( cursorSpelling );
-    return result;
-}
+// std::string getCursorKindName( CXCursorKind cursorKind )
+// {
+//     CXString kindName = clang_getCursorKindSpelling( cursorKind );
+//     std::string result = clang_getCString( kindName );
+//     clang_disposeString( kindName );
+//     return result;
+// }
+// std::string getCursorSpelling( CXCursor cursor )
+// {
+//     CXString cursorSpelling = clang_getCursorSpelling( cursor );
+//     std::string result
+//             = clang_getCString( cursorSpelling );
+//     clang_disposeString( cursorSpelling );
+//     return result;
+// }
 
 CXChildVisitResult visitor( CXCursor cursor, CXCursor /* parent */, CXClientData clientData )
 {
     CXSourceLocation location = clang_getCursorLocation( cursor );
+    
+    // TODO: This disabling, significantly increase number of stored symbols, not very essential
     if( clang_Location_isFromMainFile( location ) == 0 )
         return CXChildVisit_Continue;
-    CXCursorKind cursorKind = clang_getCursorKind( cursor );
-    unsigned int curLevel = *( reinterpret_cast<unsigned int*>( clientData ) );
-    unsigned int nextLevel = curLevel + 1;
     
+    CXCursorKind cursorKind = clang_getCursorKind( cursor );
+    TokenMap & token_map = *( reinterpret_cast< TokenMap *>( clientData ) );
+   
     CXCursor def = clang_getCursorDefinition(cursor);    
     if (!clang_Cursor_isNull(def)){
         auto spelling = clang_getCString( clang_getCursorSpelling( cursor ) );
@@ -193,13 +210,39 @@ CXChildVisitResult visitor( CXCursor cursor, CXCursor /* parent */, CXClientData
         unsigned int line = 0, col = 0, offset = 0;
         clang_getSpellingLocation(loc, &file, &line, &col, &offset);
         
-        // TODO ClangCString need to be disposed
-        
         std::string thetype = clang_getCString(clang_getTypeSpelling(clang_getCursorType(cursor)));
         cout << spelling << " " << thetype << " " << clang_getCString(clang_getFileName(file))<<":" << line << ":" << col << endl;
+        
+        // TODO: some return names have spaces separated strings which does not match previously detexted token:
+        // "class MyClass", need to handle that.
+        // std::string entity_name = spelling;
+        // auto n = entity_name.find("class");
+        // if (n != std::string::npos){
+        //     entity_name = entity_name.substr(n+6, entity_name.length());
+        // }
+        // extract just name from "class Name, Namespace::AAA"
+        CXCursor ref = clang_getCursorReferenced(cursor);
+        
+        Token tkn;
+        // tkn.name = std::string(spelling);
+        tkn.name = std::string(clang_getCString( clang_getCursorSpelling( ref ) ));
+        tkn.type = std::string(thetype);
+        tkn.path = std::string(clang_getCString(clang_getFileName(file)));
+        tkn.line = line;
+        tkn.col = col;
+        
+        auto p = TokenPair(std::string(spelling), tkn);
+        
+        // TODO: figure out how to handle same tokens in different namespaces
+        token_map.insert(p);        
     }
+    // CXCursor ref = clang_getCursorReferenced(cursor);    
+    // std::string sp = clang_getCString( clang_getCursorSpelling(ref ) );
+    // std::string cr = clang_getCString( clang_getCursorSpelling(cursor  ) );
+    // cout << "__ " << sp << " __ " << cr <<std::endl;
+
     
-    clang_visitChildren( cursor, visitor, &nextLevel );
+    clang_visitChildren( cursor, visitor, (void*)&token_map );
     
     return CXChildVisit_Continue;
 }
@@ -207,7 +250,8 @@ CXChildVisitResult visitor( CXCursor cursor, CXCursor /* parent */, CXClientData
 int main(int argc, const char **argv) {
     
     cl::ParseCommandLineOptions(argc, argv);
-                   
+#ifdef DEBUG
+    cout << "Input parameters:" << endl;
     cout << Definition << endl;
     cout << Declaration <<endl;
     cout << Complete <<endl;
@@ -216,72 +260,38 @@ int main(int argc, const char **argv) {
     for (auto & p : IncludePaths){
         cout << "___" << p <<endl;
     }
+#endif    
     
     // TODO: detect if at least one optional option is selected (-def should be default)
     
-    
     show_clang_version();
-    
-    
-//    const auto filename = argv[1];
-//    const auto cmdArgs = &argv[2];
-//    auto numArgs = argc - 2;
     
     // create index w/ excludeDeclsFromPCH = 1, displayDiagnostics=1.
     CXIndex index = clang_createIndex(1, 1);
-    
-    cout << IncludePaths.size() <<endl;
-    
-    // Includes have to also point to the stdlib directories, Clang does not include this by default
-    // The number of arguments has to match the entries in the array.
-//   const char *args[] = {
-//       "-I.", 
-//       "-I/home/kuba/PRJ/cpp_rozne/StarSOP/vector_test/",
-//       "-I/opt/hfs16.5/toolkit/include",
-//       "-I/usr/include/x86_64-linux-gnu/c++/4.9/", 
-//       "-I/usr/include/c++/4.9"
-//   };
 
-     auto input_vector = Local::test(InputFile.c_str());
-     if (input_vector.size() != 3){
-         return 1;
+    auto input_vector = Local::test(InputFile.c_str());
+    if (input_vector.size() != 3){
+     return 1;
+    }
+    const auto filename = input_vector[0].c_str();
+    auto input_line = std::stoi(input_vector[1]);
+    auto input_col =  std::stoi(input_vector[2]);
+
+    std::cout << "line: " << input_line << " col: " << input_col << std::endl;
+     
+    std::vector<std::string> vs{ std::begin(IncludePaths), std::end(IncludePaths) };
+    for(std::string &path : vs){      
+        path = "-I"+path;
      }
-     const auto filename = input_vector[0].c_str();
-     auto input_line = std::stoi(input_vector[1]);
-     auto input_col =  std::stoi(input_vector[2]);
+    std::vector<const char*>  vc;
+    std::transform(vs.begin(), vs.end(), std::back_inserter(vc), convert);  
      
-     std::cout << "line: " << input_line << " col: " << input_col << std::endl;
-     
-    // const auto filename = InputFile.c_str();
-    
-//    if (IncludePaths.size() > 0){
-         
-        // Option 1 - create a vector of char* - pass the address to the first element
-        std::vector<std::string> vs{ std::begin(IncludePaths), std::end(IncludePaths) };
-        for(std::string &path : vs){      
-            path = "-I"+path;
-            cout << path <<endl;
-         }
-         std::vector<const char*>  vc;
-         std::transform(vs.begin(), vs.end(), std::back_inserter(vc), convert);  
-         
-//         /// Option 2 Create a new string (not array) this does not work with clang_parseTranslationUnit()
-//        std::string new_string;
-//        new_string = std::accumulate(IncludePaths.begin(), IncludePaths.end(), new_string,
-//              [] (const std::string& s1, const std::string& s2) -> std::string { 
-//                 return s1.empty() ? "-I" + s2 : s1 + " -I" + s2; } );         
-//        cout << "+++" <<new_string<< endl;
-//        cout << new_string.size() <<endl;
-              
-//    }
-        
     CXTranslationUnit tu = clang_parseTranslationUnit(index, filename, &vc[0], IncludePaths.size(), NULL, 0, CXTranslationUnit_None);
 
     if (tu == NULL) {
         printf("Cannot parse translation unit\n");
         return 1;
     }
-    
     
     // get CXSouceRange of the file
     CXSourceRange range = get_filerange(tu, filename);
@@ -291,23 +301,11 @@ int main(int argc, const char **argv) {
     unsigned numTokens;
     clang_tokenize(tu, range, &tokens, &numTokens);
     
-    /// TODO: do we really need tokenize as we already  know the position 
-    //  and the word we are trying to match. The only problem was not accurate extration of the name
-    //  so tokenization may help here to find the closest match - (low priority)
-    // show tokens
     // show_all_tokens(tu, tokens, numTokens);
     auto tok_name = find_token(tu, tokens, numTokens, input_line, input_col /*line, col*/);  
-    cout << "tok_name: " <<tok_name <<endl;
-    
-    
-    ///////////////////////
-    //Text: rrr
-    //Kind: Identifier
-    //Location: /home/kuba/PRJ/cpp_rozne/test_vector.cpp:15:5:194
-    
+    cout << "|token_name: " <<tok_name <<endl;
+       
     CXCursor rootCursor = clang_getTranslationUnitCursor( tu );
-    //  clang_getCursorExtent()
-    //  clang_getCursorDefinition()        
     
     CXCursorKind cursorKind = clang_getCursorKind( rootCursor );
     auto result = clang_getCString( clang_getCursorKindSpelling( cursorKind ) );
@@ -315,10 +313,13 @@ int main(int argc, const char **argv) {
     cout << result << " " << c_range.begin_int_data << " " << c_range.end_int_data << endl;
     CXCursor def = clang_getCursorDefinition(rootCursor);
     
-    unsigned int treeLevel = 0;
-    clang_visitChildren( rootCursor, visitor, &treeLevel );
-    
-    //////////
+    TokenMap token_map;
+    clang_visitChildren( rootCursor, visitor, (void*)&token_map );
+// #ifdef DEBUG
+    for(auto& p : token_map ){
+         cout << "| " << p.second <<endl;
+    }
+// #endif    
     
     clang_disposeTokens(tu, tokens, numTokens);
     clang_disposeTranslationUnit(tu);

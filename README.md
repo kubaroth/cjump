@@ -12,3 +12,8 @@ cmake -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DCMAKE_PREFIX_PATH=$HOME/toolchains/cl
  ./cjump  -def -source /opt/hfs16.5/toolkit/samples/SOP/SOP_Flatten.C:5:5 . /usr/include/c++/4.9/ /usr/include/x86_64-linux-gnu/c++/4.9/ /opt/hfs16.5/toolkit/include/
 
 ```
+
+### Sublime
+- Copy cjump.py to: ```$HOME/.config/sublime-text-3/Packages/User/cjump.py```
+- Add a key binding in .sublime-keymap
+```  { "keys": ["ctrl+h"], "command": "cjump" },```
