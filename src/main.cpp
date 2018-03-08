@@ -211,8 +211,9 @@ CXChildVisitResult visitor( CXCursor cursor, CXCursor /* parent */, CXClientData
         clang_getSpellingLocation(loc, &file, &line, &col, &offset);
         
         std::string thetype = clang_getCString(clang_getTypeSpelling(clang_getCursorType(cursor)));
+#ifdef DEBUG
         cout << spelling << " " << thetype << " " << clang_getCString(clang_getFileName(file))<<":" << line << ":" << col << endl;
-        
+#endif     
         // TODO: some return names have spaces separated strings which does not match previously detexted token:
         // "class MyClass", need to handle that.
         // std::string entity_name = spelling;
@@ -283,10 +284,31 @@ int main(int argc, const char **argv) {
     for(std::string &path : vs){      
         path = "-I"+path;
      }
+     
+     
     std::vector<const char*>  vc;
     std::transform(vs.begin(), vs.end(), std::back_inserter(vc), convert);  
-     
-    CXTranslationUnit tu = clang_parseTranslationUnit(index, filename, &vc[0], IncludePaths.size(), NULL, 0, CXTranslationUnit_None);
+    
+    // TODO: add as a new argument to the command line
+    vc.push_back("-x");  // force c++ in order to follow c++11 flag
+    vc.push_back("c++"); // otherwise more clang error thinking it is C
+    vc.push_back("-std=c++11");  
+    vc.push_back("-DAMD64");
+    vc.push_back("-DENABLE_THREADS");
+    vc.push_back("-DFBX_ENABLED=1");
+    vc.push_back("-DLINUX");
+    vc.push_back("-DMAKING_DSO");
+    vc.push_back("-DOPENCL_ENABLED=1");
+    vc.push_back("-DOPENVDB_ENABLED=1");
+    vc.push_back("-DSESI_LITTLE_ENDIAN");
+    vc.push_back("-DSIZEOF_VOID_P=8");
+    vc.push_back("-DSOP_Star_EXPORTS");
+    vc.push_back("-DUSE_PTHREADS");
+    vc.push_back("-D_FILE_OFFSET_BITS=64");
+    vc.push_back("-D_GNU_SOURCE");
+    vc.push_back("-D_REENTRANT");
+  
+    CXTranslationUnit tu = clang_parseTranslationUnit(index, filename, &vc[0], vc.size(), NULL, 0, CXTranslationUnit_None);
 
     if (tu == NULL) {
         printf("Cannot parse translation unit\n");

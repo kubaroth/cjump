@@ -3,6 +3,15 @@ import os
 import subprocess
 import re
 
+## Todo move this stuff into the Project Settings
+SYSTEM_INCLUDES = "/usr/include/c++/4.9/ /usr/include/x86_64-linux-gnu/c++/4.9/ /home/kuba/SRC/llvm/build/lib/clang/5.0.1/include" 
+## initial version of system includes (gcc) for the project
+#SYSTEM_INCLUDES = cpp -v < /dev/null 2>&1 | grep -oE "^[ ]*/[^ ;]*$" | tr '\n' ' '
+
+CLANG_INCLUDES = "TODO"
+CJUMP = "path TODO"
+DEBUG = 0
+
 class Cjump:
     def __init__(self):
         self.__project_data = sublime.active_window().project_data()    
@@ -35,6 +44,9 @@ class Cjump:
                 path = root.split(os.sep)
                 if os.path.basename(root) == 'include':
                     self.__includes.append(root)
+                    ## Exit on the first found include (TODO: could be added as a option)
+                    break
+                    
         if not includeDirsOnly: 
             self.__includes = self.__includes + sublime_dirs
         return self.__includes
@@ -56,7 +68,10 @@ class Cjump:
                 self.symbols[name[0]]= path[0]
         
     def run_cjump(self, mode='-def', source='', line=0, col=0):
-        includes = '. /usr/include/c++/4.9/ /usr/include/x86_64-linux-gnu/c++/4.9/ /home/kuba/PRJ/cpp_rozne/StarSOP/vector_test/ /opt/hfs16.5/toolkit/include/'
+        includes = ' '.join(self.__includes)
+        includes = '. {0} {1}'.format(SYSTEM_INCLUDES, includes)
+        
+        #includes = '. /usr/include/c++/4.9/ /usr/include/x86_64-linux-gnu/c++/4.9/ /home/kuba/SRC/llvm/build/lib/clang/5.0.1/include /home/kuba/PRJ/cpp_rozne/StarSOP/vector_test/ /opt/hfs16.5/toolkit/include/'
         #source = '/opt/hfs16.5/toolkit/samples/SOP/SOP_Flatten.C'
         cmd = '{0} -def -source {1}:{2}:{3} {4}'.format(self.__cjump_path, source, line, col, includes)
         print (cmd)
@@ -64,7 +79,10 @@ class Cjump:
         p = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
         cmd_stdout, cmd_stderr = p.communicate()
         stdout = cmd_stdout.decode("utf-8")
-        ## print (cmd_stderr.decode("utf-8"))
+        print ("(error:)", cmd_stderr.decode("utf-8"))
+        
+        if DEBUG>=1: 
+            for v in str(cmd_stdout).split('\\n'):  print ("(debug): ", v)
         
         tokenList = re.findall("^\| name.*",stdout, re.MULTILINE)
         nameList =  re.findall("^\|token_name.*",stdout, re.MULTILINE)
@@ -83,7 +101,7 @@ class Cjump:
             print (self.tok, path)
             return path
         else:
-            print ("-- not found", self.tok, "in cjump.symbols")
+            print ("--", self.tok, "in cjump.symbols", "not found")
             #print (self.symbols.keys())
             return None
         
@@ -102,8 +120,8 @@ class CjumpCommand(sublime_plugin.TextCommand):
         w = sublime.active_window()
         point = self.view.text_point(int(line), int(col))
         region = sublime.Region(point,point)
-        vTemp = w.open_file('%s' % (compound_path), sublime.ENCODED_POSITION | sublime.TRANSIENT)
-        # vTemp = w.open_file('%s' % (compound_path), sublime.ENCODED_POSITION)
+        # vTemp = w.open_file('%s' % (compound_path), sublime.ENCODED_POSITION | sublime.TRANSIENT) ## Less tabs
+        vTemp = w.open_file('%s' % (compound_path), sublime.ENCODED_POSITION)  ## DEBUG
         ## TODO: best will be to show in another View
         # vTemp.show(region)
         # vTemp.run_command("goto_line", {"line": line})
@@ -111,7 +129,7 @@ class CjumpCommand(sublime_plugin.TextCommand):
     def run(self, edit):
         cjmp = Cjump() 
         all_includes = cjmp.collectIncludeDirs()
-        print (all_includes)
+        # print (all_includes)
         row, col = self.rowcol()
         compound_path = cjmp.run_cjump(mode='-def', source=self.view.file_name(), line=row, col=col)
         if compound_path:
